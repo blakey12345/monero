@@ -111,7 +111,9 @@ if (BUILD_GUI_DEPS)
             mnemonics
             common
             cncrypto
+            device
             ringct
+            ringct_basic
             checkpoints
             version)
 

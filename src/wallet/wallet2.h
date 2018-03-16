@@ -147,6 +147,7 @@ namespace tools
     static const char* tr(const char* str);
 
     static bool has_testnet_option(const boost::program_options::variables_map& vm);
+    static bool has_stagenet_option(const boost::program_options::variables_map& vm);
     static void init_options(boost::program_options::options_description& desc_params);
 
     //! Uses stdin and stdout. Returns a wallet2 if no errors.
@@ -162,9 +163,9 @@ namespace tools
     //! Just parses variables.
     static std::unique_ptr<wallet2> make_dummy(const boost::program_options::variables_map& vm, const std::function<boost::optional<password_container>(const char *, bool)> &password_prompter);
 
-    static bool verify_password(const std::string& keys_file_name, const epee::wipeable_string& password, bool no_spend_key);
+    static bool verify_password(const std::string& keys_file_name, const epee::wipeable_string& password, bool no_spend_key, hw::device &hwdev);
 
-    wallet2(bool testnet = false, bool restricted = false);
+    wallet2(cryptonote::network_type nettype = cryptonote::MAINNET, bool restricted = false);
 
     struct multisig_info
     {
@@ -448,44 +449,56 @@ namespace tools
 
     /*!
      * \brief  Generates a wallet or restores one.
-     * \param  wallet_        Name of wallet file
-     * \param  password       Password of wallet file
-     * \param  multisig_data  The multisig restore info and keys
+     * \param  wallet_              Name of wallet file
+     * \param  password             Password of wallet file
+     * \param  multisig_data        The multisig restore info and keys
+     * \param  create_address_file  Whether to create an address file
      */
     void generate(const std::string& wallet_, const epee::wipeable_string& password,
-      const std::string& multisig_data);
+      const std::string& multisig_data, bool create_address_file = false);
 
     /*!
      * \brief Generates a wallet or restores one.
-     * \param  wallet_        Name of wallet file
-     * \param  password       Password of wallet file
-     * \param  recovery_param If it is a restore, the recovery key
-     * \param  recover        Whether it is a restore
-     * \param  two_random     Whether it is a non-deterministic wallet
-     * \return                The secret key of the generated wallet
+     * \param  wallet_              Name of wallet file
+     * \param  password             Password of wallet file
+     * \param  recovery_param       If it is a restore, the recovery key
+     * \param  recover              Whether it is a restore
+     * \param  two_random           Whether it is a non-deterministic wallet
+     * \param  create_address_file  Whether to create an address file
+     * \return                      The secret key of the generated wallet
      */
     crypto::secret_key generate(const std::string& wallet, const epee::wipeable_string& password,
       const crypto::secret_key& recovery_param = crypto::secret_key(), bool recover = false,
-      bool two_random = false);
+      bool two_random = false, bool create_address_file = false);
     /*!
      * \brief Creates a wallet from a public address and a spend/view secret key pair.
-     * \param  wallet_        Name of wallet file
-     * \param  password       Password of wallet file
-     * \param  viewkey        view secret key
-     * \param  spendkey       spend secret key
+     * \param  wallet_              Name of wallet file
+     * \param  password             Password of wallet file
+     * \param  viewkey              view secret key
+     * \param  spendkey             spend secret key
+     * \param  create_address_file  Whether to create an address file
      */
     void generate(const std::string& wallet, const epee::wipeable_string& password,
       const cryptonote::account_public_address &account_public_address,
-      const crypto::secret_key& spendkey, const crypto::secret_key& viewkey);
+      const crypto::secret_key& spendkey, const crypto::secret_key& viewkey, bool create_address_file = false);
     /*!
      * \brief Creates a watch only wallet from a public address and a view secret key.
-     * \param  wallet_        Name of wallet file
-     * \param  password       Password of wallet file
-     * \param  viewkey        view secret key
+     * \param  wallet_              Name of wallet file
+     * \param  password             Password of wallet file
+     * \param  viewkey              view secret key
+     * \param  create_address_file  Whether to create an address file
      */
     void generate(const std::string& wallet, const epee::wipeable_string& password,
       const cryptonote::account_public_address &account_public_address,
-      const crypto::secret_key& viewkey = crypto::secret_key());
+      const crypto::secret_key& viewkey = crypto::secret_key(), bool create_address_file = false);
+    /*!
+     * \brief Restore a wallet hold by an HW.
+     * \param  wallet_        Name of wallet file
+     * \param  password       Password of wallet file
+     * \param  device_name    name of HW to use
+     */
+    void restore(const std::string& wallet_, const epee::wipeable_string& password, const std::string &device_name);
+
     /*!
      * \brief Creates a multisig wallet
      * \return empty if done, non empty if we need to send another string
@@ -539,7 +552,7 @@ namespace tools
      * \param password    Password for wallet file
      */
     void rewrite(const std::string& wallet_name, const epee::wipeable_string& password);
-    void write_watch_only_wallet(const std::string& wallet_name, const epee::wipeable_string& password);
+    void write_watch_only_wallet(const std::string& wallet_name, const epee::wipeable_string& password, std::string &new_keys_filename);
     void load(const std::string& wallet, const epee::wipeable_string& password);
     void store();
     /*!
@@ -605,6 +618,7 @@ namespace tools
     cryptonote::account_public_address get_subaddress(const cryptonote::subaddress_index& index) const;
     cryptonote::account_public_address get_address() const { return get_subaddress({0,0}); }
     crypto::public_key get_subaddress_spend_public_key(const cryptonote::subaddress_index& index) const;
+    std::vector<crypto::public_key> get_subaddress_spend_public_keys(uint32_t account, uint32_t begin, uint32_t end) const;
     std::string get_subaddress_as_str(const cryptonote::subaddress_index& index) const;
     std::string get_address_as_str() const { return get_subaddress_as_str({0, 0}); }
     std::string get_integrated_address_as_str(const crypto::hash8& payment_id) const;
@@ -628,12 +642,13 @@ namespace tools
     void set_refresh_type(RefreshType refresh_type) { m_refresh_type = refresh_type; }
     RefreshType get_refresh_type() const { return m_refresh_type; }
 
-    bool testnet() const { return m_testnet; }
+    cryptonote::network_type nettype() const { return m_nettype; }
     bool restricted() const { return m_restricted; }
     bool watch_only() const { return m_watch_only; }
     bool multisig(bool *ready = NULL, uint32_t *threshold = NULL, uint32_t *total = NULL) const;
     bool has_multisig_partial_key_images() const;
     bool get_multisig_seed(std::string& seed, const epee::wipeable_string &passphrase = std::string(), bool raw = true) const;
+    bool key_on_device() const { return m_key_on_device; }
 
     // locked & unlocked balance of given or current subaddress account
     uint64_t balance(uint32_t subaddr_index_major) const;
@@ -782,7 +797,8 @@ namespace tools
       if (ver < 20)
         return;
       a & m_subaddresses;
-      a & m_subaddresses_inv;
+      std::unordered_map<cryptonote::subaddress_index, crypto::public_key> dummy_subaddresses_inv;
+      a & dummy_subaddresses_inv;
       a & m_subaddress_labels;
       a & m_additional_tx_keys;
       if(ver < 21)
@@ -1011,6 +1027,25 @@ namespace tools
     crypto::public_key get_multisig_signing_public_key(size_t idx) const;
     crypto::public_key get_multisig_signing_public_key(const crypto::secret_key &skey) const;
 
+    template<class t_request, class t_response>
+    inline bool invoke_http_json(const boost::string_ref uri, const t_request& req, t_response& res, std::chrono::milliseconds timeout = std::chrono::seconds(15), const boost::string_ref http_method = "GET")
+    {
+      boost::lock_guard<boost::mutex> lock(m_daemon_rpc_mutex);
+      return epee::net_utils::invoke_http_json(uri, req, res, m_http_client, timeout, http_method);
+    }
+    template<class t_request, class t_response>
+    inline bool invoke_http_bin(const boost::string_ref uri, const t_request& req, t_response& res, std::chrono::milliseconds timeout = std::chrono::seconds(15), const boost::string_ref http_method = "GET")
+    {
+      boost::lock_guard<boost::mutex> lock(m_daemon_rpc_mutex);
+      return epee::net_utils::invoke_http_bin(uri, req, res, m_http_client, timeout, http_method);
+    }
+    template<class t_request, class t_response>
+    inline bool invoke_http_json_rpc(const boost::string_ref uri, const std::string& method_name, const t_request& req, t_response& res, std::chrono::milliseconds timeout = std::chrono::seconds(15), const boost::string_ref http_method = "GET", const std::string& req_id = "0")
+    {
+      boost::lock_guard<boost::mutex> lock(m_daemon_rpc_mutex);
+      return epee::net_utils::invoke_http_json_rpc(uri, method_name, req, res, m_http_client, timeout, http_method, req_id);
+    }
+
   private:
     /*!
      * \brief  Stores wallet information to wallet file.
@@ -1089,7 +1124,6 @@ namespace tools
     std::unordered_map<crypto::public_key, size_t> m_pub_keys;
     cryptonote::account_public_address m_account_public_address;
     std::unordered_map<crypto::public_key, cryptonote::subaddress_index> m_subaddresses;
-    std::unordered_map<cryptonote::subaddress_index, crypto::public_key> m_subaddresses_inv;
     std::vector<std::vector<std::string>> m_subaddress_labels;
     std::unordered_map<crypto::hash, std::string> m_tx_notes;
     std::unordered_map<std::string, std::string> m_attributes;
@@ -1104,7 +1138,8 @@ namespace tools
     boost::mutex m_daemon_rpc_mutex;
 
     i_wallet2_callback* m_callback;
-    bool m_testnet;
+    bool m_key_on_device;
+    cryptonote::network_type m_nettype;
     bool m_restricted;
     std::string seed_language; /*!< Language of the mnemonics (seed). */
     bool is_old_file_format; /*!< Whether the wallet file is of an old file format */
@@ -1635,7 +1670,7 @@ namespace tools
     {
       THROW_WALLET_EXCEPTION_IF(0 == dt.amount, error::zero_destination);
       needed_money += dt.amount;
-      THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount, error::tx_sum_overflow, dsts, fee, m_testnet);
+      THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount, error::tx_sum_overflow, dsts, fee, m_nettype);
     }
 
     // randomly select inputs for transaction
@@ -1757,7 +1792,7 @@ namespace tools
     std::vector<crypto::secret_key> additional_tx_keys;
     rct::multisig_out msout;
     bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sources, splitted_dsts, change_dts.addr, extra, tx, unlock_time, tx_key, additional_tx_keys, false, false, m_multisig ? &msout : NULL);
-    THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, splitted_dsts, unlock_time, m_testnet);
+    THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, splitted_dsts, unlock_time, m_nettype);
     THROW_WALLET_EXCEPTION_IF(upper_transaction_size_limit <= get_object_blobsize(tx), error::tx_too_big, tx, upper_transaction_size_limit);
 
     std::string key_images;

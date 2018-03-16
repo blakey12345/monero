@@ -111,25 +111,25 @@ namespace cryptonote
      * @brief Initialize the Blockchain state
      *
      * @param db a pointer to the backing store to use for the blockchain
-     * @param testnet true if on testnet, else false
+     * @param nettype network type
      * @param offline true if running offline, else false
      * @param test_options test parameters
      *
      * @return true on success, false if any initialization steps fail
      */
-    bool init(BlockchainDB* db, const bool testnet = false, bool offline = false, const cryptonote::test_options *test_options = NULL);
+    bool init(BlockchainDB* db, const network_type nettype = MAINNET, bool offline = false, const cryptonote::test_options *test_options = NULL);
 
     /**
      * @brief Initialize the Blockchain state
      *
      * @param db a pointer to the backing store to use for the blockchain
      * @param hf a structure containing hardfork information
-     * @param testnet true if on testnet, else false
+     * @param nettype network type
      * @param offline true if running offline, else false
      *
      * @return true on success, false if any initialization steps fail
      */
-    bool init(BlockchainDB* db, HardFork*& hf, const bool testnet = false, bool offline = false);
+    bool init(BlockchainDB* db, HardFork*& hf, const network_type nettype = MAINNET, bool offline = false);
 
     /**
      * @brief Uninitializes the blockchain state
@@ -205,15 +205,6 @@ namespace cryptonote
      * @return true if the block was found, else false
      */
     bool get_block_by_hash(const crypto::hash &h, block &blk, bool *orphan = NULL) const;
-
-    /**
-     * @brief get all block hashes (main chain, alt chains, and invalid blocks)
-     *
-     * @param main return-by-reference container to put result main chain blocks' hashes in
-     * @param alt return-by-reference container to put result alt chain blocks' hashes in
-     * @param invalid return-by-reference container to put result invalid blocks' hashes in
-     */
-    void get_all_known_block_ids(std::list<crypto::hash> &main, std::list<crypto::hash> &alt, std::list<crypto::hash> &invalid) const;
 
     /**
      * @brief performs some preprocessing on a group of incoming blocks to speed up verification
@@ -1010,7 +1001,7 @@ namespace cryptonote
 
     HardFork *m_hardfork;
 
-    bool m_testnet;
+    network_type m_nettype;
     bool m_offline;
 
     std::atomic<bool> m_cancel;
